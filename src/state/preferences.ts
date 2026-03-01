@@ -11,6 +11,9 @@ export interface Preferences {
   hideTitles: boolean;
   enableSpellcheck: boolean;
   escAction: EscAction;
+  autoLockEnabled: boolean;
+  autoLockTimeout: number; // seconds, 1–999
+  advancedToolbar: boolean;
 }
 
 const DEFAULT_PREFERENCES: Preferences = {
@@ -19,6 +22,9 @@ const DEFAULT_PREFERENCES: Preferences = {
   hideTitles: false,
   enableSpellcheck: true,
   escAction: 'none',
+  autoLockEnabled: false,
+  autoLockTimeout: 300,
+  advancedToolbar: false,
 };
 
 // Load preferences from localStorage
