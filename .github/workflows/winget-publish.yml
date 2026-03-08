@@ -15,6 +15,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify WINGET_TOKEN secret is set
+        shell: pwsh
+        run: |
+          if (-not "${{ secrets.WINGET_TOKEN }}") {
+            Write-Error "WINGET_TOKEN secret is not set. Add it at Settings → Secrets and variables → Actions."
+            exit 1
+          }
+          Write-Host "WINGET_TOKEN is configured."
+
       - name: Determine version and asset
         id: prep
         shell: pwsh
@@ -68,7 +77,11 @@ jobs:
           $url = "${{ steps.prep.outputs.url }}"
 
           # Submit manifest to WinGet repo
-          .\wingetcreate.exe update fjrevoredo.MiniDiarium --version $version --urls $url --submit
+          .\wingetcreate.exe update fjrevoredo.MiniDiarium `
+            --version $version `
+            --urls $url `
+            --token $env:WINGET_CREATE_GITHUB_TOKEN `
+            --submit
 
           if ($LASTEXITCODE -ne 0) {
             Write-Error "wingetcreate failed with exit code $LASTEXITCODE"
