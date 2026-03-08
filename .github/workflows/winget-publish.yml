@@ -84,8 +84,7 @@ jobs:
           # Submit manifest to WinGet repo
           .\wingetcreate.exe update fjrevoredo.MiniDiarium `
             --version $version `
-            --urls $url `
-            --architecture x64 `
+            --urls "$url|x64" `
             --token $env:WINGET_CREATE_GITHUB_TOKEN `
             --submit
 
