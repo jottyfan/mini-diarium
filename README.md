@@ -5,6 +5,7 @@
 [![Version](https://img.shields.io/badge/version-0.4.7-blue.svg)](https://github.com/fjrevoredo/mini-diarium/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/fjrevoredo/mini-diarium#download)
 [![Follow on X](https://img.shields.io/badge/Follow-%40MiniDiarium-000000?logo=x)](https://x.com/MiniDiarium)
+[![IdeaCred](https://ideacred.com/api/badge/fjrevoredo/mini-diarium)](https://ideacred.com/submissions)
 
 **Website:** [mini-diarium.com](https://mini-diarium.com)
 
