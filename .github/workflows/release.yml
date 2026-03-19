@@ -5,60 +5,70 @@ on:
     tags:
       - 'v*.*.*'
 
-# Required for creating releases and uploading assets
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  LATEST_CHANGELOG_FILE: latest-changelog.md
+  LATEST_CHANGELOG_TEMPLATE: latest-changelog.example.md
+
 jobs:
   create-release:
-    name: Create Release
+    name: Create Release Draft
     runs-on: ubuntu-latest
     outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
       version: ${{ steps.get_version.outputs.version }}
     steps:
+      - uses: actions/checkout@v6
+
       - name: Get version from tag
         id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      - name: Create Draft Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validate latest changelog file
+        shell: bash
+        run: |
+          if [ ! -f "$LATEST_CHANGELOG_FILE" ]; then
+            echo "Missing $LATEST_CHANGELOG_FILE in the tagged commit."
+            echo "Create it from $LATEST_CHANGELOG_TEMPLATE before tagging the release."
+            exit 1
+          fi
+
+          if [ ! -s "$LATEST_CHANGELOG_FILE" ]; then
+            echo "$LATEST_CHANGELOG_FILE is empty."
+            exit 1
+          fi
+
+          if ! grep -q '[^[:space:]]' "$LATEST_CHANGELOG_FILE"; then
+            echo "$LATEST_CHANGELOG_FILE only contains whitespace."
+            exit 1
+          fi
+
+          if [ -f "$LATEST_CHANGELOG_TEMPLATE" ] && cmp -s "$LATEST_CHANGELOG_FILE" "$LATEST_CHANGELOG_TEMPLATE"; then
+            echo "$LATEST_CHANGELOG_FILE still matches the untouched template."
+            exit 1
+          fi
+
+          if grep -q 'REPLACE BEFORE TAGGING' "$LATEST_CHANGELOG_FILE"; then
+            echo "$LATEST_CHANGELOG_FILE still contains placeholder text."
+            exit 1
+          fi
+
+      - name: Create draft release from latest changelog
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Mini Diarium v${{ steps.get_version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          name: Mini Diarium v${{ steps.get_version.outputs.version }}
           draft: true
           prerelease: false
-          body: |
-            ## Mini Diarium v${{ steps.get_version.outputs.version }}
-
-            ### Installation
-
-            Download the appropriate file for your platform:
-
-            - **Windows**: `Mini-Diarium-${{ steps.get_version.outputs.version }}-windows.msi` or `.exe`
-            - **macOS**: `Mini-Diarium-${{ steps.get_version.outputs.version }}-macos.dmg`
-            - **Linux**: `Mini-Diarium-${{ steps.get_version.outputs.version }}-linux.AppImage` or `.deb`
-
-            ### Security Notes
-
-            **Windows**: SmartScreen may show a warning on first launch. Click "More info" then "Run anyway".
-            **macOS**: Gatekeeper may show "damaged and can't be opened." Run `xattr -cr "/Applications/Mini Diarium.app"` in Terminal, then launch normally.
-            **Linux**: Verify SHA256 checksums against `checksums-*.txt` before installation.
-
-            ### What's Changed
-
-            <!-- Add release notes here before publishing -->
-
-            ---
-
-            Full changelog: https://github.com/fjrevoredo/mini-diarium/compare/...v${{ steps.get_version.outputs.version }}
+          body_path: ${{ env.LATEST_CHANGELOG_FILE }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-release:
     name: Build Release (${{ matrix.platform }})
@@ -142,11 +152,9 @@ jobs:
           mkdir -p release-artifacts
           VERSION="${{ needs.create-release.outputs.version }}"
 
-          # Find and rename artifacts
           find src-tauri/target/release/bundle -name "*.AppImage" -exec cp {} release-artifacts/Mini-Diarium-${VERSION}-linux.AppImage \;
           find src-tauri/target/release/bundle -name "*.deb" -exec cp {} release-artifacts/Mini-Diarium-${VERSION}-linux.deb \;
 
-          # Generate checksums
           cd release-artifacts
           sha256sum * > checksums-linux.txt
           cat checksums-linux.txt
@@ -157,10 +165,8 @@ jobs:
           mkdir -p release-artifacts
           VERSION="${{ needs.create-release.outputs.version }}"
 
-          # Find and rename artifacts (universal builds output to target/universal-apple-darwin/release/bundle/)
           find src-tauri/target/universal-apple-darwin/release/bundle -name "*.dmg" -exec cp {} release-artifacts/Mini-Diarium-${VERSION}-macos.dmg \;
 
-          # Generate checksums
           cd release-artifacts
           shasum -a 256 * > checksums-macos.txt
           cat checksums-macos.txt
@@ -172,20 +178,113 @@ jobs:
           mkdir -p release-artifacts
           VERSION="${{ needs.create-release.outputs.version }}"
 
-          # Find and rename artifacts
           find src-tauri/target/release/bundle -name "*.msi" -exec cp {} release-artifacts/Mini-Diarium-${VERSION}-windows.msi \;
           find src-tauri/target/release/bundle/nsis -name "*.exe" -exec cp {} release-artifacts/Mini-Diarium-${VERSION}-windows.exe \; || true
 
-          # Generate checksums
           cd release-artifacts
           sha256sum * > checksums-windows.txt
           cat checksums-windows.txt
 
+      - name: Verify release artifacts are present
+        shell: bash
+        run: |
+          if [ ! -d release-artifacts ]; then
+            echo "release-artifacts directory is missing"
+            exit 1
+          fi
+
+          ls -lh release-artifacts
+
+          if [ "$(find release-artifacts -maxdepth 1 -type f | wc -l)" -eq 0 ]; then
+            echo "No release artifacts were prepared"
+            exit 1
+          fi
+
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.create-release.outputs.version }}
+          tag_name: ${{ github.ref_name }}
           draft: true
           files: release-artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-release:
+    name: Publish Release
+    needs:
+      - create-release
+      - build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify expected release assets exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${{ needs.create-release.outputs.version }}"
+          assets="$(gh release view "$tag" --json assets --jq '.assets[].name')"
+
+          printf '%s\n' "$assets"
+
+          for expected in \
+            "Mini-Diarium-${version}-windows.exe" \
+            "Mini-Diarium-${version}-windows.msi" \
+            "Mini-Diarium-${version}-macos.dmg" \
+            "Mini-Diarium-${version}-linux.AppImage" \
+            "Mini-Diarium-${version}-linux.deb"
+          do
+            if ! printf '%s\n' "$assets" | grep -Fxq "$expected"; then
+              echo "Missing expected release asset: $expected"
+              exit 1
+            fi
+          done
+
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "$GITHUB_REF_NAME" --draft=false
+
+      - name: Check out master for changelog cleanup
+        uses: actions/checkout@v6
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Create cleanup PR when latest changelog matches the tagged release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag_file="$(mktemp)"
+          git show "${GITHUB_REF_NAME}:${LATEST_CHANGELOG_FILE}" > "$tag_file"
+
+          if [ ! -f "$LATEST_CHANGELOG_FILE" ]; then
+            echo "$LATEST_CHANGELOG_FILE is already absent on master; skipping cleanup PR."
+            exit 0
+          fi
+
+          if ! cmp -s "$LATEST_CHANGELOG_FILE" "$tag_file"; then
+            echo "$LATEST_CHANGELOG_FILE has changed on master since the tag was created; skipping cleanup PR."
+            exit 0
+          fi
+
+          cleanup_branch="automation/clear-latest-changelog-${GITHUB_REF_NAME}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$cleanup_branch"
+          git rm "$LATEST_CHANGELOG_FILE"
+          git commit -m "chore(release): clear latest changelog after ${GITHUB_REF_NAME}"
+          git push --force-with-lease origin "HEAD:${cleanup_branch}"
+
+          existing_pr="$(gh pr list --head "$cleanup_branch" --base master --state open --json number --jq '.[0].number')"
+          if [ -n "$existing_pr" ] && [ "$existing_pr" != "null" ]; then
+            echo "Cleanup PR #${existing_pr} already exists."
+            exit 0
+          fi
+
+          gh pr create \
+            --base master \
+            --head "$cleanup_branch" \
+            --title "chore(release): clear latest changelog after ${GITHUB_REF_NAME}" \
+            --body "Automated cleanup PR created after publishing ${GITHUB_REF_NAME}. Removes ${LATEST_CHANGELOG_FILE} so the next release must create a fresh copy from ${LATEST_CHANGELOG_TEMPLATE}."

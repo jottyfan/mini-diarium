@@ -18,6 +18,7 @@ Before starting the release process:
 - [ ] CI/CD pipeline passing on master
 - [ ] No known P0/P1 bugs
 - [ ] CHANGELOG.md updated with release notes
+- [ ] Create `latest-changelog.md` from `latest-changelog.example.md` and fill it with the exact release body to publish
 - [ ] Philosophy alignment reviewed for unreleased changelog items against `PHILOSOPHY.md`
   - Confirm each unreleased `CHANGELOG.md` item still fits the six philosophy principles: core vs extension, security impact, testability, portability, focused scope, and simplicity cost
   - If any item introduces a tradeoff or drift risk, record it explicitly in the release PR description or a dedicated audit note before tagging the release
@@ -59,18 +60,28 @@ This automatically updates:
 - `src-tauri/Cargo.lock`
 - `website/index.html` version badge, structured-data `softwareVersion`, and direct website download URLs
 
-### Step 3: Commit and Push Branch
+### Step 3: Prepare the Release Notes File
+
+Create `latest-changelog.md` from the template and replace all placeholder text:
 
 ```bash
-# Commit version bump
-git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock website/index.html README.md
+cp latest-changelog.example.md latest-changelog.md
+```
+
+The workflow publishes this file verbatim as the GitHub release body, so it must contain the exact notes you want users and WinGet to receive.
+
+### Step 4: Commit and Push Branch
+
+```bash
+# Commit version bump and release notes
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock website/index.html README.md latest-changelog.md
 git commit -m "chore: bump version to 0.1.1"
 
 # Push branch
 git push origin release-0.1.1
 ```
 
-### Step 4: Create Pull Request
+### Step 5: Create Pull Request
 
 1. Go to: https://github.com/fjrevoredo/mini-diarium/pulls
 2. Click "New pull request"
@@ -79,7 +90,7 @@ git push origin release-0.1.1
 5. Add release notes in description
 6. Create and merge the PR
 
-### Step 5: Tag the Release (After PR Merged)
+### Step 6: Tag the Release (After PR Merged)
 
 ```bash
 # Switch to master and pull the merged changes
@@ -93,23 +104,26 @@ git push origin v0.1.1
 
 **⚠️ Important**: The tag MUST be created on `master` after the PR is merged, not on the release branch!
 
-### Step 6: Monitor Release Workflow
+### Step 7: Monitor Release Workflow
 
 1. Go to: https://github.com/fjrevoredo/mini-diarium/actions
 2. Wait for "Release" workflow to complete (~15-20 minutes)
 3. Workflow will:
+   - Validate `latest-changelog.md`
+   - Create a draft GitHub release using `latest-changelog.md` as the release body
    - Build for Linux, macOS, Windows
-   - Create draft release with all artifacts
-   - Upload checksums for each platform
+   - Upload installers and checksums to the draft release
+   - Publish the release automatically after all expected assets are present
+   - Open a cleanup PR removing `latest-changelog.md` if it still matches the tagged release copy
 
-### Step 7: Complete the Draft Release
+### Step 8: Verify the Published Release
 
 1. Go to: https://github.com/fjrevoredo/mini-diarium/releases
-2. Find the draft release for v0.1.1
-3. Edit the release notes:
-   - Replace `<!-- Add release notes here before publishing -->` with actual changes
-   - Organize changes by category (Features, Fixes, Performance, etc.)
-4. Click "Publish release"
+2. Open the published release for v0.1.1
+3. Confirm the release notes exactly match `latest-changelog.md`
+4. Confirm all installers and checksum files are attached
+5. Confirm the cleanup PR was opened unless `latest-changelog.md` had already changed on `master`
+6. Merge the cleanup PR so the next release must create a fresh `latest-changelog.md`
 
 ---
 
@@ -191,7 +205,7 @@ git push origin v0.1.1
 
 ### Need to cancel/redo a release
 
-1. Delete the draft release on GitHub
+1. Delete the GitHub release on GitHub
 2. Delete the tag (see above)
 3. Fix any issues
 4. Start from Step 2 (commit changes if needed)
@@ -209,19 +223,22 @@ git checkout master && git pull && git checkout -b release-X.Y.Z
 # 2. Bump version
 ./bump-version.sh X.Y.Z
 
-# 3. Commit and push branch
-git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock website/index.html README.md
+# 3. Create release notes from the template
+cp latest-changelog.example.md latest-changelog.md
+
+# 4. Commit and push branch
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock website/index.html README.md latest-changelog.md
 git commit -m "chore: bump version to X.Y.Z"
 git push origin release-X.Y.Z
 
-# 4. Create PR on GitHub: release-X.Y.Z → master
+# 5. Create PR on GitHub: release-X.Y.Z → master
 
-# 5. After PR merged, tag on master
+# 6. After PR merged, tag on master
 git checkout master && git pull
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 
-# 6. Wait for GitHub Actions → publish draft release
+# 7. Wait for GitHub Actions → publish the release automatically
 ```
 
 **Full release workflow (Windows PowerShell):**
@@ -233,19 +250,22 @@ git checkout master; git pull; git checkout -b release-X.Y.Z
 # 2. Bump version
 .\bump-version.ps1 X.Y.Z
 
-# 3. Commit and push branch
-git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock website/index.html README.md
+# 3. Create release notes from the template
+Copy-Item latest-changelog.example.md latest-changelog.md
+
+# 4. Commit and push branch
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock website/index.html README.md latest-changelog.md
 git commit -m "chore: bump version to X.Y.Z"
 git push origin release-X.Y.Z
 
-# 4. Create PR on GitHub: release-X.Y.Z → master
+# 5. Create PR on GitHub: release-X.Y.Z → master
 
-# 5. After PR merged, tag on master
+# 6. After PR merged, tag on master
 git checkout master; git pull
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 
-# 6. Wait for GitHub Actions → publish draft release
+# 7. Wait for GitHub Actions → publish the release automatically
 ```
 
 ---
@@ -257,21 +277,26 @@ The following happens automatically when you push a tag:
 ✅ Build for all platforms (Linux x64, macOS universal, Windows x64)
 ✅ Generate installers (.AppImage, .deb, .dmg, .msi, .exe)
 ✅ Calculate SHA256 checksums for all artifacts
-✅ Create draft GitHub release with all files
-✅ Upload artifacts to release
+✅ Create draft GitHub release from `latest-changelog.md`
+✅ Upload artifacts to the draft release
+✅ Publish the release automatically after artifact verification
+✅ Open a cleanup PR removing `latest-changelog.md` when it is safe to do so
 
 You only need to:
 
 1. Bump version
-2. Push tag
-3. Publish the draft release
+2. Create and commit `latest-changelog.md` from `latest-changelog.example.md`
+3. Push tag
+4. Verify the published release and merge the cleanup PR
 
 ---
 
 ## Automated WinGet Publishing
 
-When you publish a release (Step 7), an additional workflow automatically:
+When the release workflow publishes a release, an additional workflow automatically:
 
+✅ Generates WinGet manifests with pinned `wingetcreate` `1.12.x`
+✅ Adds `ReleaseNotes` and `ReleaseNotesUrl` from the published GitHub release body
 ✅ Submits WinGet manifest update to `microsoft/winget-pkgs`
 ✅ Opens a pull request for the new version
 ✅ Package identifier: `fjrevoredo.MiniDiarium`
@@ -280,6 +305,7 @@ When you publish a release (Step 7), an additional workflow automatically:
 
 - Repository secret `WINGET_TOKEN` must be configured (one-time setup)
 - Windows asset `Mini-Diarium-X.Y.Z-windows.exe` must be in the release
+- Published GitHub release body must not be empty
 
 **After the release:**
 
@@ -287,5 +313,4 @@ When you publish a release (Step 7), an additional workflow automatically:
 2. Wait for WinGet maintainers to review and merge the PR
 3. Users can then upgrade with: `winget upgrade fjrevoredo.MiniDiarium`
 
-**Setup Instructions:**
-See `WINGET.md` for complete setup documentation.
+No separate WinGet setup document exists; configure `WINGET_TOKEN` and follow this guide.
