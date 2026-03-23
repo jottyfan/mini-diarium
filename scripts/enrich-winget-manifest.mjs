@@ -31,7 +31,10 @@ function parseArgs(argv) {
 }
 
 function stripMarkdownLinks(text) {
-  return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
+  // Strip image markdown first (![alt](url) → drop entirely), then regular links ([text](url) → text (url))
+  return text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)');
 }
 
 function stripMarkdownFormatting(text) {
