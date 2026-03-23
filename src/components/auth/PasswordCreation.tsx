@@ -38,7 +38,7 @@ export default function PasswordCreation() {
   };
 
   return (
-    <div class="flex flex-col min-h-screen items-center bg-tertiary px-4 py-6">
+    <div class="flex flex-col h-full items-center bg-tertiary px-4 py-6">
       <div class="my-auto w-full max-w-md">
         <div class="rounded-lg bg-primary px-8 py-8 shadow-lg">
           <div class="mb-3 flex justify-center">
@@ -86,7 +86,7 @@ export default function PasswordCreation() {
             </div>
 
             <Show when={error()}>
-              <div class="rounded-md bg-error p-3">
+              <div role="alert" class="rounded-md bg-error p-3">
                 <p class="text-sm text-error">{error()}</p>
               </div>
             </Show>

@@ -355,7 +355,7 @@ All menu event names are prefixed `menu-`. See `menu.rs:78-107` for the full lis
 
 ## Testing
 
-### Backend: 239 tests across 30 modules
+### Backend: 249 tests across 30 modules
 
 Run: `cd src-tauri && cargo test`
 
@@ -371,7 +371,8 @@ Run: `bun run test:e2e` (requires release binary + `tauri-driver` installed)
 
 | File | Description |
 |------|-------------|
-| `e2e/specs/diary-workflow.spec.ts` | 2 tests: (1) create diary → write entry → lock → unlock → verify persistence; (2) multi-date calendar navigation → write second entry → lock/unlock → verify both entries persist |
+| `e2e/specs/diary-workflow.spec.ts` | 1 test: create diary → write entry → lock → unlock → verify persistence |
+| `e2e/specs/multi-entry.spec.ts` | 1 test (3 scenarios): (A) 2 entries persist after lock/unlock; (B) "+" enabled after "←" navigation from blank entry (v0.4.9 Variant 1); (C) "+" enabled after day-switch with blank entry (v0.4.9 Variant 2) |
 
 **data-testid attributes** used by E2E tests (do not remove):
 
@@ -386,6 +387,12 @@ Run: `bun run test:e2e` (requires release binary + `tauri-driver` installed)
 | `Header.tsx` | Lock button | `lock-journal-button` |
 | `TitleEditor.tsx` | Title input | `title-input` |
 | `Calendar.tsx` | Each day button | `calendar-day-YYYY-MM-DD` |
+| `EntryNavBar.tsx` | Nav bar container | `entry-nav-bar` |
+| `EntryNavBar.tsx` | Previous entry button (`←`) | `entry-prev-button` |
+| `EntryNavBar.tsx` | Entry position counter | `entry-counter` |
+| `EntryNavBar.tsx` | Next entry button (`→`) | `entry-next-button` |
+| `EntryNavBar.tsx` | Delete entry button (`−`) | `entry-delete-button` |
+| `EntryNavBar.tsx` | Add entry button (`+`) | `entry-add-button` |
 
 ## Verification Commands
 
@@ -453,6 +460,13 @@ bun run type-check       # TypeScript type check
     - `'preferences'` — the `Preferences` interface (autoLockEnabled, hideTitles, etc.)
     - `'theme-preference'` — `'auto'|'light'|'dark'` (managed by `src/lib/theme.ts`)
     - `'theme-overrides'` — JSON object of CSS token overrides (managed by `src/lib/theme-overrides.ts`)
+
+19. **E2E viewport sizing — three rules that must hold:**
+    - **Why this keeps breaking:** WebView2 captures CSS viewport values (`100vh`, `window.innerHeight`) at first paint. Any resize after `win.show()` leaves those values stale, producing a white gap above vertically-centred content. This has broken three times (v0.4.3, v0.4.9 ×2); the root cause is always the same pattern.
+    - **Rust** (`lib.rs`): call `win.set_size(LogicalSize::new(800, 660))` **before** `win.show()` in E2E mode. Never move it after. This is the single source of truth for E2E viewport size. Production window: `800×780` (`tauri.conf.json`).
+    - **CSS**: all screen-filling containers (`JournalPicker`, `PasswordCreation`, `PasswordPrompt`, `App` checking state, `MainLayout`) use `h-full` (`height: 100%` via `html → body → #root` chain from `index.html`). **Never** use `h-screen`/`min-h-screen` (`100vh`) — it may report the full Tauri inner-window height (including the native app menu bar) rather than the WebView viewport, making containers taller than the visible area.
+    - **wdio** (`wdio.conf.ts`): the `before` hook must NOT call `browser.setWindowSize()`. WebDriver `setWindowRect` fires after first paint and uses different size semantics than Tauri's `LogicalSize` — see "why this keeps breaking" above.
+    - **uno.config.ts**: `h-screen` and `min-h-screen` are intentionally **absent** from the safelist. Do not add them back.
 
 ## Security Rules
 

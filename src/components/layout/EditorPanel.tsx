@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onCleanup, onMount, Show } from 'solid-js';
+import { createSignal, createEffect, onCleanup, onMount, Show, untrack } from 'solid-js';
 import { Editor } from '@tiptap/core';
 import { createLogger } from '../../lib/logger';
 import TitleEditor from '../editor/TitleEditor';
@@ -39,6 +39,14 @@ export default function EditorPanel() {
   let loadRequestId = 0;
   let saveRequestId = 0;
   const [isCreatingEntry, setIsCreatingEntry] = createSignal(false);
+  // Reactive trigger: updated by handleContentUpdate (user edits via onUpdate) and by
+  // the onSetContent callback from DiaryEditor (programmatic loads via setContent).
+  // Forces isContentEmpty() to re-evaluate AFTER TipTap updates editor.isEmpty.
+  // Without this, addDisabled evaluates when setPendingEntryId() fires but editor.isEmpty
+  // is still stale from the previous entry — causing the wrong addDisabled state.
+  // onSetContent also triggers debouncedSave for blank entries (auto-deletion on navigation)
+  // because emitUpdate:false suppresses the onUpdate path that previously handled this.
+  const [editorIsEmpty, setEditorIsEmpty] = createSignal(true);
 
   // Backend returns entries newest-first; reverse so index 0 = oldest and index N-1 = newest.
   // This makes the counter read "1/N … N/N" in chronological order and puts new entries last.
@@ -48,6 +56,11 @@ export default function EditorPanel() {
   };
 
   const isContentEmpty = () => {
+    // Access editorIsEmpty() to add it as a reactive dependency. This forces re-evaluation
+    // when handleContentUpdate sets it (after TipTap fires onUpdate), not only when
+    // editorInstance() or content() changes. The actual empty check still reads
+    // editor.isEmpty directly so it reflects TipTap's current document state.
+    editorIsEmpty();
     const editor = editorInstance();
     if (editor && !editor.isDestroyed) {
       return editor.isEmpty || editor.getText().trim() === '';
@@ -66,13 +79,33 @@ export default function EditorPanel() {
       try {
         await deleteEntryIfEmpty(entryId, currentTitle, '');
         if (isDisposed || requestId !== saveRequestId) return;
-        // Reset so the next real keystroke creates a fresh entry
-        setPendingEntryId(null);
-        setDayEntries((prev) => prev.filter((e) => e.id !== entryId));
+        const updatedEntries = dayEntries().filter((e) => e.id !== entryId);
+        setDayEntries(updatedEntries);
         const dates = await getAllEntryDates();
         if (isDisposed || requestId !== saveRequestId) return;
         setEntryDates(dates);
-        setWordCount(0);
+        if (updatedEntries.length > 0) {
+          // Other entries remain — navigate to the nearest so the editor always shows
+          // real content after a blank entry is auto-deleted. Without this, switching
+          // days and back leaves pendingEntryId=null with stale blank content,
+          // permanently disabling the "+" button (Bug 2).
+          const newIdx = Math.min(currentIndex(), updatedEntries.length - 1);
+          const entry = updatedEntries[newIdx];
+          setCurrentIndex(newIdx);
+          setPendingEntryId(entry.id);
+          setTitle(entry.title);
+          setContent(entry.text);
+          const words = entry.text.trim().split(/\s+/).filter(Boolean);
+          setWordCount(words.length);
+          // Prevent the debounced save that setContent triggers via TipTap —
+          // the remaining entry is already persisted and has not changed.
+          debouncedSave.cancel();
+        } else {
+          // No entries remain — reset so the next keystroke creates a fresh entry.
+          setPendingEntryId(null);
+          setCurrentIndex(0);
+          setWordCount(0);
+        }
       } catch (error) {
         log.error('Failed to delete empty entry:', error);
       }
@@ -214,9 +247,8 @@ export default function EditorPanel() {
       setTitle('');
       setContent('');
       setWordCount(0);
-      // setContent('') causes TipTap to fire onUpdate synchronously, which schedules
-      // a debounced save with empty content on the new entry ID — cancelling here
-      // prevents that save from running and immediately deleting the new blank entry.
+      // Cancel any previously queued debounced save from the current entry before
+      // switching to the new blank entry — prevents saving the wrong entry data.
       debouncedSave.cancel();
 
       // Refresh dates
@@ -235,6 +267,15 @@ export default function EditorPanel() {
 
   const handleContentUpdate = (newContent: string) => {
     setContent(newContent);
+    // Update the reactive trigger so isContentEmpty() re-evaluates with TipTap's actual
+    // document state. This fires after TipTap processes the content, not when the SolidJS
+    // content() signal is set — closing the timing gap where editor.isEmpty is stale.
+    const edInst = editorInstance();
+    setEditorIsEmpty(
+      edInst && !edInst.isDestroyed
+        ? edInst.isEmpty || edInst.getText().trim() === ''
+        : newContent.trim() === '',
+    );
     const id = pendingEntryId();
     if (id !== null) {
       debouncedSave(id, title(), newContent);
@@ -424,6 +465,18 @@ export default function EditorPanel() {
             <DiaryEditor
               content={content()}
               onUpdate={handleContentUpdate}
+              onSetContent={(isEmpty) => {
+                setEditorIsEmpty(isEmpty);
+                // When a blank entry is programmatically loaded, trigger the debounce so it
+                // gets auto-deleted (replaces the onUpdate path suppressed by emitUpdate:false).
+                // untrack() prevents signal reads from being tracked by DiaryEditor's effect.
+                if (isEmpty) {
+                  const id = untrack(pendingEntryId);
+                  if (id !== null) {
+                    debouncedSave(id, untrack(title), untrack(content));
+                  }
+                }
+              }}
               placeholder="What's on your mind today?"
               onEditorReady={setEditorInstance}
               spellCheck={preferences().enableSpellcheck}
