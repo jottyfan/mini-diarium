@@ -35,15 +35,15 @@ Flathub **will reject** a new app submission that has no screenshots. This must 
 <screenshots>
   <screenshot type="default">
     <caption>Main journal view</caption>
-    <image type="source" width="1280" height="800">https://mini-diarium.com/screenshots/main.png</image>
+    <image type="source" width="1920" height="1080">https://github.com/fjrevoredo/mini-diarium/blob/2737c02b96855240122c7bb3586a1f0276fdf439/public/promotional/flatpak/main.png</image>
   </screenshot>
   <screenshot>
     <caption>Calendar navigation</caption>
-    <image type="source" width="1280" height="800">https://mini-diarium.com/screenshots/calendar.png</image>
+    <image type="source" width="1920" height="1080">https://github.com/fjrevoredo/mini-diarium/blob/2737c02b96855240122c7bb3586a1f0276fdf439/public/promotional/flatpak/calendar.png</image>
   </screenshot>
   <screenshot>
     <caption>Preferences</caption>
-    <image type="source" width="1280" height="800">https://mini-diarium.com/screenshots/preferences.png</image>
+    <image type="source" width="1920" height="1080">https://github.com/fjrevoredo/mini-diarium/blob/2737c02b96855240122c7bb3586a1f0276fdf439/public/promotional/flatpak/preferences.png</image>
   </screenshot>
 </screenshots>
 ```
